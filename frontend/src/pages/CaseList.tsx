@@ -18,17 +18,21 @@ const statusMap: Record<string, { color: string; text: string }> = {
 
 export default function CaseList() {
   const [cases, setCases] = useState<Case[]>([])
+  const [total, setTotal] = useState(0)
+  const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
   const [form] = Form.useForm()
   const [submitting, setSubmitting] = useState(false)
   const navigate = useNavigate()
 
-  const load = async () => {
+  const load = async (p = 1) => {
     setLoading(true)
     try {
-      const data = await api.getCases()
-      setCases(data)
+      const data = await api.getCases({ page: p, page_size: 20 })
+      setCases(data.items)
+      setTotal(data.total)
+      setPage(data.page)
     } finally {
       setLoading(false)
     }
@@ -69,6 +73,13 @@ export default function CaseList() {
         dataSource={cases}
         rowKey="id"
         loading={loading}
+        pagination={{
+          current: page,
+          total,
+          pageSize: 20,
+          onChange: load,
+          showTotal: (t) => `共 ${t} 条`,
+        }}
         columns={[
           { title: '案件编号', dataIndex: 'case_no', width: 160 },
           { title: '出险人', dataIndex: 'insured_name', width: 100 },

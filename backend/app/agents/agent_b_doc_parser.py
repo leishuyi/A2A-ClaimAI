@@ -1,24 +1,25 @@
 import random
+from sqlalchemy.orm import Session
+
 from app.agents.base import BaseAgent
 from app.agents.protocol import A2AMessage
 from app.database.models import AgentName
 
 
 class DocParserAgent(BaseAgent):
-    """Agent B: 材料解析 - 模拟 OCR + 多模态信息提取"""
+    """Agent B: 材料解析 — 模拟 OCR + 多模态信息提取"""
 
     def __init__(self):
         self.agent_name = AgentName.B_DOC_PARSER
         self.agent_label = "材料解析"
 
-    def process(self, message: A2AMessage) -> A2AMessage:
-        trace_id = self.create_trace_record(message.case_id, message.payload)
+    def process(self, message: A2AMessage, db: Session) -> A2AMessage:
+        trace_id = self.create_trace_record(db, message.case_id, message.payload)
         try:
             case_id = message.payload.get("case_id")
             insured = message.payload.get("insured_name", "未知")
             incident_desc = message.payload.get("incident_desc", "")
 
-            # 模拟从材料中提取的结构化数据
             extracted = {
                 "case_id": case_id,
                 "insured_name": insured,
@@ -32,12 +33,10 @@ class DocParserAgent(BaseAgent):
                 "medical_total": round(random.uniform(3000, 50000), 2),
                 "hospital_name": "模拟三甲医院",
                 "admission_date": message.payload.get("incident_date"),
-                "discharge_date": None,
             }
 
             confidence = min(d["confidence"] for d in extracted["documents_parsed"])
-
-            self.complete_trace(trace_id, extracted, confidence=confidence)
+            self.complete_trace(db, trace_id, extracted, confidence=confidence)
             return A2AMessage(
                 message_id=f"msg_{case_id}_doc_out",
                 source_agent="agent_b_doc_parser",
@@ -48,11 +47,10 @@ class DocParserAgent(BaseAgent):
                 confidence=confidence,
             )
         except Exception as e:
-            self.fail_trace(trace_id, str(e))
+            self.fail_trace(db, trace_id, str(e))
             raise
 
     def _extract_diagnosis(self, desc: str) -> str:
-        """从出险描述中提取诊断结论"""
         if "阑尾" in desc or "阑尾炎" in desc:
             return "急性阑尾炎"
         if "骨折" in desc:

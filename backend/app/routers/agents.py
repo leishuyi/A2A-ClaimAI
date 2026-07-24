@@ -1,11 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
+from loguru import logger
 from sqlalchemy.orm import Session
 
 from app.database.session import get_db
-from app.database.models import Case, AgentTrace
+from app.database.models import Case, AgentTrace, CaseStatus
 from app.agents.orchestrator import AgentOrchestrator
 from app.schemas.agent import AgentTraceResponse
 from app.schemas.case import CaseResponse
+from app.core.response import BizError, ErrCode
 
 router = APIRouter()
 orchestrator = AgentOrchestrator()
@@ -15,15 +17,16 @@ orchestrator = AgentOrchestrator()
 def run_agents(case_id: int, db: Session = Depends(get_db)):
     case = db.query(Case).filter(Case.id == case_id).first()
     if not case:
-        raise HTTPException(404, "案件不存在")
-    if case.status not in ("draft", "agents_completed"):
-        raise HTTPException(400, f"当前案件状态 {case.status} 不允许执行Agent链路")
+        raise BizError(ErrCode.CASE_NOT_FOUND, "案件不存在")
+    if case.status not in (CaseStatus.DRAFT, CaseStatus.AGENTS_COMPLETED):
+        raise BizError(ErrCode.CASE_INVALID_STATUS, f"当前状态 {case.status.value} 不允许执行 Agent 链路")
 
-    error = orchestrator.run_chain(case_id)
+    error = orchestrator.run_chain(case_id, db)
     if error:
-        raise HTTPException(500, error)
+        raise BizError(50001, error)
 
     db.refresh(case)
+    logger.info("Agent 链路执行完毕", case_id=case_id, case_no=case.case_no)
     return {"message": "Agent 链路执行完成", "case": CaseResponse.model_validate(case)}
 
 
@@ -31,5 +34,10 @@ def run_agents(case_id: int, db: Session = Depends(get_db)):
 def get_traces(case_id: int, db: Session = Depends(get_db)):
     case = db.query(Case).filter(Case.id == case_id).first()
     if not case:
-        raise HTTPException(404, "案件不存在")
-    return db.query(AgentTrace).filter(AgentTrace.case_id == case_id).order_by(AgentTrace.id).all()
+        raise BizError(ErrCode.CASE_NOT_FOUND, "案件不存在")
+    return (
+        db.query(AgentTrace)
+        .filter(AgentTrace.case_id == case_id)
+        .order_by(AgentTrace.id)
+        .all()
+    )

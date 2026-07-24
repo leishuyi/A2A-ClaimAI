@@ -37,6 +37,13 @@ class AgentStatus(str, enum.Enum):
 
 
 class Case(Base):
+    """理赔案件 — 核心实体
+
+    参考 grid-qa 模式：
+    - soft delete (deleted_at)
+    - 高频查询字段加索引 (status)
+    - 创建人/更新人追踪
+    """
     __tablename__ = "cases"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
@@ -45,10 +52,13 @@ class Case(Base):
     insurance_product = Column(String(128), nullable=False)
     incident_desc = Column(Text, nullable=False)
     incident_date = Column(DateTime, nullable=False)
-    status = Column(SAEnum(CaseStatus), default=CaseStatus.DRAFT, nullable=False)
+    status = Column(SAEnum(CaseStatus), default=CaseStatus.DRAFT, nullable=False, index=True)
     risk_level = Column(SAEnum(RiskLevel), default=RiskLevel.LOW, nullable=False)
     total_amount = Column(Float, nullable=True)
     calculated_amount = Column(Float, nullable=True)
+    created_by = Column(String(64), nullable=True)
+    updated_by = Column(String(64), nullable=True)
+    deleted_at = Column(DateTime, nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)
 
@@ -57,16 +67,18 @@ class Case(Base):
 
 
 class AgentTrace(Base):
+    """Agent 执行追踪 — 全链路可追溯"""
     __tablename__ = "agent_traces"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    case_id = Column(Integer, ForeignKey("cases.id"), nullable=False)
+    case_id = Column(Integer, ForeignKey("cases.id"), nullable=False, index=True)
     agent_name = Column(SAEnum(AgentName), nullable=False)
     agent_label = Column(String(64), nullable=False)
     status = Column(SAEnum(AgentStatus), default=AgentStatus.PENDING, nullable=False)
     input_data = Column(JSON, default=dict)
     output_data = Column(JSON, default=dict)
     confidence = Column(Float, nullable=True)
+    duration_ms = Column(Integer, nullable=True)
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
 
@@ -74,13 +86,15 @@ class AgentTrace(Base):
 
 
 class AuditLog(Base):
+    """审计日志 — 全操作留痕，支持幂等防重"""
     __tablename__ = "audit_logs"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    case_id = Column(Integer, ForeignKey("cases.id"), nullable=False)
+    case_id = Column(Integer, ForeignKey("cases.id"), nullable=False, index=True)
     action = Column(String(32), nullable=False)
     comment = Column(Text, default="")
     operator = Column(String(64), nullable=False)
+    idempotency_key = Column(String(64), unique=True, nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
 
     case = relationship("Case", back_populates="reviews")
