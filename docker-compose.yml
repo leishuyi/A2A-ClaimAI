@@ -3,7 +3,7 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: starshield
-      POSTGRES_PASSWORD: starshield
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-starshield}
       POSTGRES_DB: starshield
     ports:
       - "5432:5432"
@@ -20,7 +20,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      STARSHIELD_DATABASE_URL: postgresql://starshield:starshield@db:5432/starshield
+      STARSHIELD_DATABASE_URL: ${STARSHIELD_DATABASE_URL:-postgresql://starshield:starshield@db:5432/starshield}
     depends_on:
       db:
         condition: service_healthy

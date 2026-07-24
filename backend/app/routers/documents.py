@@ -15,12 +15,16 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.core.response import ApiResponse, BizError, ErrCode
+from app.database.models import AuditLog
 from app.database.session import get_db
 from app.database.models import Case, Document, DocumentType
 from app.schemas.case import DocumentResponse
 from app.services.file_storage import get_storage_backend
 
 router = APIRouter()
+
+# 文件魔数签名
+MAGIC_SIGNATURES = {".jpg": b"\xff\xd8\xff", ".jpeg": b"\xff\xd8\xff", ".png": b"\x89PNG", ".bmp": b"BM", ".tiff": b"II*\x00", ".pdf": b"%PDF"}
 
 ALLOWED_EXTENSIONS = {ext.strip().lower() for ext in settings.allowed_extensions.split(",")}
 DOC_TYPE_MAP = {
@@ -42,10 +46,15 @@ def _check_case_exists(case_id: int, db: Session) -> Case:
 def _validate_file(file: UploadFile):
     ext = os.path.splitext(file.filename or "")[1].lower() if file.filename else ""
     if ext not in ALLOWED_EXTENSIONS:
-        raise BizError(
-            code=ErrCode.VALIDATION,
-            message=f"不支持的文件类型: {ext}，允许: {settings.allowed_extensions}",
-        )
+        raise BizError(code=ErrCode.VALIDATION, message=f"不支持的文件类型: {ext}，允许: {settings.allowed_extensions}")
+    if file.size is not None and file.size > settings.max_file_size:
+        raise BizError(code=ErrCode.VALIDATION, message=f"文件大小超过限制 ({settings.max_file_size // 1024 // 1024}MB)")
+
+
+def _verify_magic_bytes(content: bytes, ext: str):
+    expected = MAGIC_SIGNATURES.get(ext)
+    if expected and not content.startswith(expected):
+        raise BizError(code=ErrCode.VALIDATION, message=f"文件内容与扩展名 {ext} 不匹配，疑似伪造文件")
 
 
 def _doc_to_response(doc: Document) -> DocumentResponse:
@@ -76,10 +85,8 @@ async def upload_document(
 
     content = await file.read()
     if len(content) > settings.max_file_size:
-        raise BizError(
-            code=ErrCode.VALIDATION,
-            message=f"文件大小超过限制 ({settings.max_file_size / 1024 / 1024:.0f}MB)",
-        )
+        raise BizError(code=ErrCode.VALIDATION, message=f"文件大小超过限制 ({settings.max_file_size // 1024 // 1024}MB)")
+    _verify_magic_bytes(content, ext)
 
     # 发票号全局查重
     fraud_flags: list[str] = []
@@ -123,6 +130,10 @@ async def upload_document(
     db.refresh(doc)
 
     resp = _doc_to_response(doc)
+    if settings.feature_audit_log:
+        db.add(AuditLog(case_id=case_id, action="document_upload", comment=f"上传文档: {file.filename}", operator="system"))
+        db.commit()
+
     return ApiResponse(data={"document": resp.model_dump(), "fraud_flags": fraud_flags})
 
 
@@ -140,7 +151,7 @@ def get_document(case_id: int, doc_id: int, db: Session = Depends(get_db)):
     """获取单个文档元信息"""
     _check_case_exists(case_id, db)
 
-    doc = db.query(Document).filter(Document.id == doc_id, Document.case_id == case_id).first()
+    doc = db.query(Document).filter(Document.id == doc_id, Document.case_id == case_id, Document.deleted_at.is_(None)).first()
     if not doc:
         raise BizError(code=ErrCode.CASE_NOT_FOUND, message="文档不存在")
 
@@ -152,14 +163,16 @@ def delete_document(case_id: int, doc_id: int, db: Session = Depends(get_db)):
     """删除影像材料"""
     _check_case_exists(case_id, db)
 
-    doc = db.query(Document).filter(Document.id == doc_id, Document.case_id == case_id).first()
+    doc = db.query(Document).filter(Document.id == doc_id, Document.case_id == case_id, Document.deleted_at.is_(None)).first()
     if not doc:
         raise BizError(code=ErrCode.CASE_NOT_FOUND, message="文档不存在")
 
     storage = get_storage_backend()
     storage.delete(doc.file_path)
 
-    db.delete(doc)
+    from datetime import datetime as _dt
+    doc.deleted_at = _dt.utcnow()
+    if settings.feature_audit_log:
+        db.add(AuditLog(case_id=case_id, action="document_delete", comment=f"删除文档: {doc.file_name}", operator="system"))
     db.commit()
-
     return ApiResponse(message="删除成功")

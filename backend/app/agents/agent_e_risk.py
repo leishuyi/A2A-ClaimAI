@@ -7,6 +7,7 @@ P0 风控能力：
 """
 from datetime import datetime, timedelta
 
+from loguru import logger
 from sqlalchemy.orm import Session
 
 from app.agents.base import BaseAgent
@@ -175,6 +176,7 @@ class RiskControlAgent(BaseAgent):
                                 "detail": f"单据日期 {doc_date.date()} 早于出险日期7天以上，需核实",
                             })
                 except ValueError:
+                    logger.warning("doc_date parse failed", date_str=doc_date_str)
                     continue
 
         if not findings:

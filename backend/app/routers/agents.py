@@ -8,6 +8,7 @@ from app.agents.orchestrator import AgentOrchestrator
 from app.schemas.agent import AgentTraceResponse
 from app.schemas.case import CaseResponse
 from app.core.response import BizError, ErrCode
+from app.database.models import AuditLog
 
 router = APIRouter()
 orchestrator = AgentOrchestrator()
@@ -27,6 +28,14 @@ def run_agents(case_id: int, db: Session = Depends(get_db)):
 
     db.refresh(case)
     logger.info("Agent 链路执行完毕", case_id=case_id, case_no=case.case_no)
+    # 审计日志
+    from app.config import settings
+    from app.database.models import AuditLog
+    if settings.feature_audit_log:
+        log = AuditLog(case_id=case_id, action="run_agents",
+                       comment=f"触发 Agent 链路: {case.case_no}", operator="system")
+        db.add(log)
+        db.commit()
     return {"message": "Agent 链路执行完成", "case": CaseResponse.model_validate(case)}
 
 

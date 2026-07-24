@@ -10,3 +10,6 @@ dist/
 .DS_Store
 .claude/
 data/logs/
+
+# Generated test artifacts
+tests/*.json

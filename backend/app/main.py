@@ -15,6 +15,7 @@ from loguru import logger
 
 from app.config import settings
 from app.core.log import setup_logging
+from app.core.auth import AuthMiddleware
 from app.core.response import ApiResponse, BizError
 from app.database.session import engine, Base
 from app.routers import cases, agents, human_gate, documents, evaluation
@@ -47,13 +48,19 @@ app = FastAPI(
 )
 
 # ---- 中间件 ----
+app.add_middleware(AuthMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-API-Key"],
 )
+
+if settings.app_env == "production":
+    app.docs_url = None
+    app.redoc_url = None
+    app.openapi_url = None
 
 # ---- 全局异常处理器 ----
 @app.exception_handler(BizError)

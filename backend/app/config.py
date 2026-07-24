@@ -23,12 +23,16 @@ class Settings(BaseSettings):
     feature_audit_log: bool = True     # 审计日志
     feature_agent_parallel: bool = False  # Agent 并行编排（进阶，默认关闭）
     feature_event_bus: bool = True     # 事件总线
-    feature_rbac: bool = False         # RBAC 权限控制（默认关闭，开启需配置认证）
+    feature_rbac: bool = False         # RBAC 权限控制（默认关闭，开启需配置 STARSHIELD_API_KEY）
 
     # ---- 日志 ----
     log_level: str = "INFO"
     log_rotation: str = "500 MB"
     log_retention: str = "14 days"
+
+        # ---- 安全 ----
+    api_key: str = ""                  # API Key，为空则不鉴权
+    pii_mask_enabled: bool = True      # PII 数据脱敏
 
     # ---- 文件存储 ----
     upload_dir: str = "data/uploads"         # 文件存储根目录

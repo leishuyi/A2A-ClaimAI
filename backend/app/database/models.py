@@ -108,6 +108,7 @@ class Document(Base):
     extracted_name = Column(String(64), nullable=True)       # OCR提取/用户填写的姓名
     invoice_no = Column(String(128), nullable=True, index=True)  # 发票号码（查重用）
     document_date = Column(DateTime, nullable=True)           # 单据日期
+    deleted_at = Column(DateTime, nullable=True, index=True)  # 软删除
     created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
 
     case = relationship("Case", back_populates="documents")

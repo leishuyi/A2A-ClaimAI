@@ -6,7 +6,7 @@ from loguru import logger
 from sqlalchemy.orm import Session
 
 from app.database.session import get_db
-from app.database.models import Case, CaseStatus, RiskLevel
+from app.database.models import Case, CaseStatus, RiskLevel, AuditLog, AuditLog
 from app.schemas.case import CaseCreate, CaseResponse
 from app.core.response import BizError, ErrCode
 
@@ -41,6 +41,13 @@ def create_case(data: CaseCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(case)
     logger.info("新建报案", case_no=case.case_no, insured_name=case.insured_name)
+    # 审计日志
+    from app.config import settings
+    if settings.feature_audit_log:
+        log = AuditLog(case_id=case.id, action="case_create",
+                       comment=f"新建报案: {case.case_no} {data.insured_name}", operator="system")
+        db.add(log)
+        db.commit()
     return case
 
 
