@@ -105,6 +105,9 @@ class Document(Base):
     file_path = Column(String(500), nullable=False)
     file_size = Column(Integer, nullable=False, default=0)
     mime_type = Column(String(100), nullable=True)
+    extracted_name = Column(String(64), nullable=True)       # OCR提取/用户填写的姓名
+    invoice_no = Column(String(128), nullable=True, index=True)  # 发票号码（查重用）
+    document_date = Column(DateTime, nullable=True)           # 单据日期
     created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
 
     case = relationship("Case", back_populates="documents")

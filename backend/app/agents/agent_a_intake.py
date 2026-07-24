@@ -3,11 +3,11 @@ from sqlalchemy.orm import Session
 
 from app.agents.base import BaseAgent
 from app.agents.protocol import A2AMessage
-from app.database.models import AgentName, Case
+from app.database.models import AgentName, Case, Document
 
 
 class IntakeAgent(BaseAgent):
-    """Agent A: 报案受理"""
+    """Agent A: 报案受理 — 收集报案信息 + 影像材料元数据"""
 
     def __init__(self):
         self.agent_name = AgentName.A_INTAKE
@@ -21,6 +21,20 @@ class IntakeAgent(BaseAgent):
             if not case:
                 raise ValueError("案件不存在")
 
+            # 加载影像材料元数据，供后续 Agent 做风控校验
+            docs = db.query(Document).filter(Document.case_id == case_id).all()
+            documents_meta = []
+            for d in docs:
+                doc_date = d.document_date.isoformat() if d.document_date else None
+                documents_meta.append({
+                    "doc_id": d.id,
+                    "doc_type": d.doc_type.value if hasattr(d.doc_type, 'value') else str(d.doc_type),
+                    "file_name": d.file_name,
+                    "extracted_name": d.extracted_name,
+                    "invoice_no": d.invoice_no,
+                    "document_date": doc_date,
+                })
+
             output = {
                 "case_id": case_id,
                 "case_no": case.case_no,
@@ -28,6 +42,8 @@ class IntakeAgent(BaseAgent):
                 "insurance_product": case.insurance_product,
                 "incident_desc": case.incident_desc,
                 "incident_date": case.incident_date.isoformat() if case.incident_date else None,
+                "total_amount": case.total_amount,
+                "documents": documents_meta,
                 "status": "报案已受理",
                 "validation_passed": True,
             }

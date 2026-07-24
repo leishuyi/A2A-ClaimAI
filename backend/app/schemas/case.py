@@ -16,6 +16,9 @@ class DocumentResponse(BaseModel):
     file_size: int
     mime_type: Optional[str] = None
     url: str = ""
+    extracted_name: Optional[str] = None
+    invoice_no: Optional[str] = None
+    document_date: Optional[datetime] = None
     created_at: datetime
 
     class Config:

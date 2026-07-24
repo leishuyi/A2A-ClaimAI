@@ -45,6 +45,9 @@ export interface Document {
   file_size: number;
   mime_type: string | null;
   url: string;
+  extracted_name?: string | null;
+  invoice_no?: string | null;
+  document_date?: string | null;
   created_at: string;
 }
 

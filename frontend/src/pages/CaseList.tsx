@@ -29,6 +29,9 @@ interface FileItem {
   status: 'pending' | 'uploading' | 'done' | 'error'
   progress: number
   errorMsg?: string
+  extractedName?: string
+  invoiceNo?: string
+  documentDate?: string
 }
 
 export default function CaseList() {
@@ -77,11 +80,13 @@ export default function CaseList() {
           f.uid === item.uid ? { ...f, status: 'uploading' as const, progress: 0 } : f
         ))
         try {
-          await api.uploadDocument(caseId, item.file, item.docType, (pct) => {
-            setFileItems(prev => prev.map(f =>
-              f.uid === item.uid ? { ...f, progress: pct } : f
-            ))
-          })
+          await api.uploadDocument(caseId, item.file, item.docType,
+            { extracted_name: item.extractedName, invoice_no: item.invoiceNo, document_date: item.documentDate },
+            (pct) => {
+              setFileItems(prev => prev.map(f =>
+                f.uid === item.uid ? { ...f, progress: pct } : f
+              ))
+            })
           setFileItems(prev => prev.map(f =>
             f.uid === item.uid ? { ...f, status: 'done' as const, progress: 100 } : f
           ))
@@ -276,45 +281,62 @@ export default function CaseList() {
             {fileItems.length > 0 && (
               <div style={{ marginTop: 12 }}>
                 {fileItems.map((item) => (
-                  <div
-                    key={item.uid}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 8,
-                      padding: '6px 0', borderBottom: '1px solid #f0f0f0',
-                    }}
+                  <div key={item.uid}
+                    style={{ padding: '8px 0', borderBottom: '1px solid #f0f0f0' }}
                   >
-                    {/* 文档类型选择 */}
-                    <Select
-                      size="small"
-                      value={item.docType}
-                      onChange={(v) => setFileItems(prev => prev.map(f =>
-                        f.uid === item.uid ? { ...f, docType: v } : f
-                      ))}
-                      style={{ width: 100 }}
-                      options={Object.entries(DocTypeLabels).map(([k, v]) => ({ label: v, value: k }))}
-                    />
-                    {/* 文件名 */}
-                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {item.file.name}
-                    </span>
-                    {/* 文件大小 */}
-                    <span style={{ width: 70, color: '#999', fontSize: 12 }}>
-                      {(item.file.size / 1024).toFixed(0)} KB
-                    </span>
-                    {/* 状态 */}
-                    {item.status === 'uploading' && (
-                      <Progress size="small" style={{ width: 100 }} percent={item.progress} />
-                    )}
-                    {item.status === 'done' && <Tag color="green">已上传</Tag>}
-                    {item.status === 'error' && <Tag color="red" title={item.errorMsg}>失败</Tag>}
-                    {item.status === 'pending' && (
-                      <Button
+                    {/* 第一行：文档类型 + 文件名 + 大小 + 操作 */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: item.status === 'pending' ? 6 : 0 }}>
+                      <Select
                         size="small"
-                        danger
-                        onClick={() => setFileItems(prev => prev.filter(f => f.uid !== item.uid))}
-                      >
-                        移除
-                      </Button>
+                        value={item.docType}
+                        onChange={(v) => setFileItems(prev => prev.map(f =>
+                          f.uid === item.uid ? { ...f, docType: v } : f
+                        ))}
+                        style={{ width: 100 }}
+                        options={Object.entries(DocTypeLabels).map(([k, v]) => ({ label: v, value: k }))}
+                      />
+                      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 13 }}>
+                        {item.file.name}
+                      </span>
+                      <span style={{ width: 60, color: '#999', fontSize: 12 }}>
+                        {(item.file.size / 1024).toFixed(0)} KB
+                      </span>
+                      {item.status === 'uploading' && (
+                        <Progress size="small" style={{ width: 100 }} percent={item.progress} />
+                      )}
+                      {item.status === 'done' && <Tag color="green">已上传</Tag>}
+                      {item.status === 'error' && <Tag color="red" title={item.errorMsg}>失败</Tag>}
+                      {item.status === 'pending' && (
+                        <Button size="small" danger onClick={() => setFileItems(prev => prev.filter(f => f.uid !== item.uid))}>移除</Button>
+                      )}
+                    </div>
+                    {/* 第二行（待上传状态）：风控辅助字段 */}
+                    {item.status === 'pending' && (
+                      <div style={{ display: 'flex', gap: 8, marginLeft: 4 }}>
+                        <Input
+                          size="small" placeholder="文档姓名" style={{ width: 120 }}
+                          value={item.extractedName}
+                          onChange={(e) => setFileItems(prev => prev.map(f =>
+                            f.uid === item.uid ? { ...f, extractedName: e.target.value } : f
+                          ))}
+                        />
+                        {item.docType === 'invoice' && (
+                          <Input
+                            size="small" placeholder="发票号码" style={{ width: 140 }}
+                            value={item.invoiceNo}
+                            onChange={(e) => setFileItems(prev => prev.map(f =>
+                              f.uid === item.uid ? { ...f, invoiceNo: e.target.value } : f
+                            ))}
+                          />
+                        )}
+                        <DatePicker
+                          size="small" placeholder="单据日期" style={{ width: 140 }}
+                          value={item.documentDate ? dayjs(item.documentDate) : null}
+                          onChange={(d) => setFileItems(prev => prev.map(f =>
+                            f.uid === item.uid ? { ...f, documentDate: d?.format('YYYY-MM-DD') } : f
+                          ))}
+                        />
+                      </div>
                     )}
                   </div>
                 ))}

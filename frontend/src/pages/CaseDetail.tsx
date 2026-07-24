@@ -194,6 +194,16 @@ export default function CaseDetail() {
                   <div style={{ fontSize: 11, color: '#999' }}>
                     {(doc.file_size / 1024).toFixed(0)} KB
                   </div>
+                  {doc.extracted_name && (
+                    <div style={{ fontSize: 11, color: '#1677ff' }}>
+                      姓名: {doc.extracted_name}
+                    </div>
+                  )}
+                  {doc.invoice_no && (
+                    <div style={{ fontSize: 11, color: '#faad14' }}>
+                      发票号: {doc.invoice_no}
+                    </div>
+                  )}
                   <Space size={4} style={{ marginTop: 4 }}>
                     {isImage(doc) && (
                       <Button size="small" type="text" icon={<EyeOutlined />}

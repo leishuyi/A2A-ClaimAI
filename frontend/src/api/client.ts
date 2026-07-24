@@ -33,7 +33,11 @@ export interface PageResult<T> {
 }
 
 /** 上传文件到案件（使用 FormData，非 JSON） */
-async function uploadFile<T>(caseId: number, file: File, docType: string, onProgress?: (pct: number) => void): Promise<T> {
+async function uploadFile<T>(
+  caseId: number, file: File, docType: string,
+  extraFields?: { extracted_name?: string; invoice_no?: string; document_date?: string },
+  onProgress?: (pct: number) => void,
+): Promise<T> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', `${BASE}/${caseId}/documents`);
@@ -62,6 +66,9 @@ async function uploadFile<T>(caseId: number, file: File, docType: string, onProg
     const formData = new FormData();
     formData.append('file', file);
     formData.append('doc_type', docType);
+    if (extraFields?.extracted_name) formData.append('extracted_name', extraFields.extracted_name);
+    if (extraFields?.invoice_no) formData.append('invoice_no', extraFields.invoice_no);
+    if (extraFields?.document_date) formData.append('document_date', extraFields.document_date);
     xhr.send(formData);
   });
 }
@@ -96,8 +103,10 @@ export const api = {
 
   // Documents
   getDocuments: (caseId: number) => request<Document[]>(`/${caseId}/documents`),
-  uploadDocument: (caseId: number, file: File, docType: string, onProgress?: (pct: number) => void) =>
-    uploadFile<{ data: Document }>(caseId, file, docType, onProgress),
+  uploadDocument: (caseId: number, file: File, docType: string,
+    extraFields?: { extracted_name?: string; invoice_no?: string; document_date?: string },
+    onProgress?: (pct: number) => void) =>
+    uploadFile<{ data: { document: Document; fraud_flags: string[] } }>(caseId, file, docType, extraFields, onProgress),
   deleteDocument: (caseId: number, docId: number) =>
     request<void>(`/${caseId}/documents/${docId}`, { method: 'DELETE' }),
 };

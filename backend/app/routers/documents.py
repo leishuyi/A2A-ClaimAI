@@ -7,8 +7,9 @@
 """
 import os
 import uuid
-from datetime import datetime
+from typing import Optional
 
+from dateutil import parser as dateparser
 from fastapi import APIRouter, Depends, UploadFile, File, Form
 from sqlalchemy.orm import Session
 
@@ -60,9 +61,12 @@ async def upload_document(
     case_id: int,
     file: UploadFile = File(...),
     doc_type: str = Form("other"),
+    extracted_name: Optional[str] = Form(None),
+    invoice_no: Optional[str] = Form(None),
+    document_date: Optional[str] = Form(None),
     db: Session = Depends(get_db),
 ):
-    """上传影像材料（multipart/form-data）"""
+    """上传影像材料（multipart/form-data），支持风控字段"""
     case = _check_case_exists(case_id, db)
 
     if doc_type not in DOC_TYPE_MAP:
@@ -77,7 +81,25 @@ async def upload_document(
             message=f"文件大小超过限制 ({settings.max_file_size / 1024 / 1024:.0f}MB)",
         )
 
-    # 生成存储路径: {upload_dir}/{case_id}/{uuid}_{原始文件名}
+    # 发票号全局查重
+    fraud_flags: list[str] = []
+    if invoice_no:
+        existing = db.query(Document).filter(
+            Document.invoice_no == invoice_no,
+            Document.case_id != case_id,
+        ).first()
+        if existing:
+            fraud_flags.append(f"发票号重复: 案件 {existing.case_id} 已使用此发票号")
+
+    # 解析单据日期
+    parsed_date = None
+    if document_date:
+        try:
+            parsed_date = dateparser.parse(document_date)
+        except Exception:
+            raise BizError(code=ErrCode.VALIDATION, message="单据日期格式无效")
+
+    # 生成存储路径
     ext = os.path.splitext(file.filename or "unknown")[1]
     unique_name = f"{uuid.uuid4().hex}{ext}"
     relative_path = f"{case_id}/{unique_name}"
@@ -92,12 +114,16 @@ async def upload_document(
         file_path=relative_path,
         file_size=len(content),
         mime_type=file.content_type,
+        extracted_name=extracted_name,
+        invoice_no=invoice_no,
+        document_date=parsed_date,
     )
     db.add(doc)
     db.commit()
     db.refresh(doc)
 
-    return ApiResponse(data=_doc_to_response(doc))
+    resp = _doc_to_response(doc)
+    return ApiResponse(data={"document": resp.model_dump(), "fraud_flags": fraud_flags})
 
 
 @router.get("/{case_id}/documents", response_model=ApiResponse)

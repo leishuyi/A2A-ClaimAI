@@ -1,4 +1,10 @@
-import random
+"""Agent B: 材料解析 — 模拟 OCR + 多模态信息提取
+
+当前为 MVP 模拟实现：
+- 从 payload 读取文档元数据并传递
+- 模拟 OCR 提取诊断信息
+- 后续可对接 PaddleOCR / 多模态 LLM
+"""
 from sqlalchemy.orm import Session
 
 from app.agents.base import BaseAgent
@@ -19,23 +25,39 @@ class DocParserAgent(BaseAgent):
             case_id = message.payload.get("case_id")
             insured = message.payload.get("insured_name", "未知")
             incident_desc = message.payload.get("incident_desc", "")
+            docs_meta = message.payload.get("documents", [])
+
+            # 模拟文档解析结果
+            parsed_docs = []
+            for d in docs_meta:
+                parsed_docs.append({
+                    "type": d.get("doc_type", "unknown"),
+                    "file_name": d.get("file_name", ""),
+                    "extracted_name": d.get("extracted_name"),
+                    "invoice_no": d.get("invoice_no"),
+                    "document_date": d.get("document_date"),
+                    "status": "已识别",
+                    "confidence": 0.95,
+                })
+
+            # 如果无影像材料，使用默认模拟
+            if not parsed_docs:
+                parsed_docs = [
+                    {"type": "身份证", "status": "已识别", "confidence": 0.99},
+                    {"type": "诊断证明", "status": "已识别", "confidence": 0.97},
+                    {"type": "费用发票", "status": "已识别", "confidence": 0.95},
+                ]
 
             extracted = {
                 "case_id": case_id,
                 "insured_name": insured,
-                "documents_parsed": [
-                    {"type": "身份证", "status": "已识别", "confidence": round(random.uniform(0.95, 0.99), 2)},
-                    {"type": "诊断证明", "status": "已识别", "confidence": round(random.uniform(0.90, 0.98), 2)},
-                    {"type": "费用发票", "status": "已识别", "confidence": round(random.uniform(0.92, 0.97), 2)},
-                    {"type": "住院病历", "status": "已识别", "confidence": round(random.uniform(0.78, 0.92), 2)},
-                ],
+                "documents_parsed": parsed_docs,
                 "diagnosis": self._extract_diagnosis(incident_desc),
-                "medical_total": round(random.uniform(3000, 50000), 2),
                 "hospital_name": "模拟三甲医院",
                 "admission_date": message.payload.get("incident_date"),
             }
 
-            confidence = min(d["confidence"] for d in extracted["documents_parsed"])
+            confidence = min((d.get("confidence", 0.9) for d in parsed_docs), default=0.9)
             self.complete_trace(db, trace_id, extracted, confidence=confidence)
             return A2AMessage(
                 message_id=f"msg_{case_id}_doc_out",
