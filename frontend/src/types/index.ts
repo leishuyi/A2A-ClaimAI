@@ -37,6 +37,27 @@ export interface DocumentUpload {
   content_text: string;
 }
 
+export interface Document {
+  id: number;
+  case_id: number;
+  doc_type: DocType;
+  file_name: string;
+  file_size: number;
+  mime_type: string | null;
+  url: string;
+  created_at: string;
+}
+
+export type DocType = 'id_card' | 'diagnosis' | 'invoice' | 'medical_record' | 'other';
+
+export const DocTypeLabels: Record<DocType, string> = {
+  id_card: '身份证',
+  diagnosis: '诊断证明',
+  invoice: '费用发票',
+  medical_record: '住院病历',
+  other: '其他',
+};
+
 export interface AgentTrace {
   id: number;
   case_id: number;

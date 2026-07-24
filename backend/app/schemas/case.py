@@ -8,6 +8,20 @@ class DocumentUpload(BaseModel):
     content_text: str
 
 
+class DocumentResponse(BaseModel):
+    id: int
+    case_id: int
+    doc_type: str
+    file_name: str
+    file_size: int
+    mime_type: Optional[str] = None
+    url: str = ""
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class CaseCreate(BaseModel):
     insured_name: str = Field(..., description="出险人姓名")
     insurance_product: str = Field(..., description="险种")

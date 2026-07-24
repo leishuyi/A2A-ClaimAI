@@ -1,11 +1,17 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Table, Button, Modal, Form, Input, DatePicker, Select, InputNumber, Space, Tag, message } from 'antd'
-import { PlusOutlined, PlayCircleOutlined, EyeOutlined } from '@ant-design/icons'
+import {
+  Table, Button, Modal, Form, Input, DatePicker, Select,
+  InputNumber, Space, Tag, message, Upload, Progress,
+} from 'antd'
+import { PlusOutlined, PlayCircleOutlined, EyeOutlined, InboxOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { api } from '../api/client'
 import RiskBadge from '../components/RiskBadge'
-import type { Case } from '../types'
+import type { Case, DocType } from '../types'
+import { DocTypeLabels } from '../types'
+
+const { Dragger } = Upload
 
 const statusMap: Record<string, { color: string; text: string }> = {
   draft: { color: 'default', text: '待处理' },
@@ -16,6 +22,15 @@ const statusMap: Record<string, { color: string; text: string }> = {
   rejected: { color: 'red', text: '已驳回' },
 }
 
+interface FileItem {
+  uid: string
+  file: File
+  docType: DocType
+  status: 'pending' | 'uploading' | 'done' | 'error'
+  progress: number
+  errorMsg?: string
+}
+
 export default function CaseList() {
   const [cases, setCases] = useState<Case[]>([])
   const [total, setTotal] = useState(0)
@@ -24,6 +39,7 @@ export default function CaseList() {
   const [modalOpen, setModalOpen] = useState(false)
   const [form] = Form.useForm()
   const [submitting, setSubmitting] = useState(false)
+  const [fileItems, setFileItems] = useState<FileItem[]>([])
   const navigate = useNavigate()
 
   const load = async (p = 1) => {
@@ -44,20 +60,85 @@ export default function CaseList() {
     const values = await form.validateFields()
     setSubmitting(true)
     try {
-      await api.createCase({
+      // 1. 创建案件
+      const newCase = await api.createCase({
         insured_name: values.insured_name,
         insurance_product: values.insurance_product,
         incident_desc: values.incident_desc,
         incident_date: values.incident_date.format('YYYY-MM-DD'),
         total_amount: values.total_amount,
       })
-      message.success('报案成功')
+      const caseId = newCase.id
+
+      // 2. 逐个上传文件
+      let uploadOk = true
+      for (const item of fileItems) {
+        setFileItems(prev => prev.map(f =>
+          f.uid === item.uid ? { ...f, status: 'uploading' as const, progress: 0 } : f
+        ))
+        try {
+          await api.uploadDocument(caseId, item.file, item.docType, (pct) => {
+            setFileItems(prev => prev.map(f =>
+              f.uid === item.uid ? { ...f, progress: pct } : f
+            ))
+          })
+          setFileItems(prev => prev.map(f =>
+            f.uid === item.uid ? { ...f, status: 'done' as const, progress: 100 } : f
+          ))
+        } catch (err: any) {
+          uploadOk = false
+          setFileItems(prev => prev.map(f =>
+            f.uid === item.uid ? { ...f, status: 'error' as const, errorMsg: err.message } : f
+          ))
+        }
+      }
+
+      if (uploadOk && fileItems.length > 0) {
+        message.success(`报案成功，${fileItems.length} 份影像已上传`)
+      } else if (fileItems.length > 0) {
+        message.warning('报案成功，部分影像上传失败，可在详情页重新上传')
+      } else {
+        message.success('报案成功')
+      }
+
       setModalOpen(false)
       form.resetFields()
+      setFileItems([])
       load()
+    } catch (err: any) {
+      message.error(err.message || '报案失败')
     } finally {
       setSubmitting(false)
     }
+  }
+
+  const handleModalClose = () => {
+    setModalOpen(false)
+    form.resetFields()
+    setFileItems([])
+  }
+
+  const handleFileDrop = (file: File) => {
+    const ext = file.name.split('.').pop()?.toLowerCase()
+    const allowed = ['jpg', 'jpeg', 'png', 'bmp', 'tiff', 'pdf']
+    if (!ext || !allowed.includes(ext)) {
+      message.error(`不支持的文件类型 .${ext}`)
+      return false
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      message.error('文件大小不能超过 10MB')
+      return false
+    }
+
+    const newItem: FileItem = {
+      uid: `${Date.now()}_${Math.random().toString(36).slice(2)}`,
+      file,
+      docType: 'other',
+      status: 'pending',
+      progress: 0,
+    }
+    setFileItems(prev => [...prev, newItem])
+    return false // 阻止 antd 默认上传行为
   }
 
   return (
@@ -148,10 +229,10 @@ export default function CaseList() {
       <Modal
         title="新建报案"
         open={modalOpen}
-        onCancel={() => setModalOpen(false)}
+        onCancel={handleModalClose}
         onOk={handleCreate}
         confirmLoading={submitting}
-        width={560}
+        width={640}
       >
         <Form form={form} layout="vertical">
           <Form.Item name="insured_name" label="出险人姓名" rules={[{ required: true }]}>
@@ -177,6 +258,69 @@ export default function CaseList() {
           <Form.Item name="total_amount" label="医疗总费用">
             <InputNumber style={{ width: '100%' }} min={0} placeholder="可选项，案件材料中提取" />
           </Form.Item>
+
+          {/* 影像上传区域 */}
+          <div style={{ marginTop: 16 }}>
+            <h4>上传影像资料</h4>
+            <Dragger
+              multiple
+              showUploadList={false}
+              beforeUpload={handleFileDrop}
+              accept=".jpg,.jpeg,.png,.bmp,.tiff,.pdf"
+            >
+              <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+              <p className="ant-upload-text">点击或拖拽文件到此区域上传</p>
+              <p className="ant-upload-hint">支持 JPG/PNG/BMP/TIFF/PDF，单文件最大 10MB</p>
+            </Dragger>
+
+            {fileItems.length > 0 && (
+              <div style={{ marginTop: 12 }}>
+                {fileItems.map((item) => (
+                  <div
+                    key={item.uid}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 8,
+                      padding: '6px 0', borderBottom: '1px solid #f0f0f0',
+                    }}
+                  >
+                    {/* 文档类型选择 */}
+                    <Select
+                      size="small"
+                      value={item.docType}
+                      onChange={(v) => setFileItems(prev => prev.map(f =>
+                        f.uid === item.uid ? { ...f, docType: v } : f
+                      ))}
+                      style={{ width: 100 }}
+                      options={Object.entries(DocTypeLabels).map(([k, v]) => ({ label: v, value: k }))}
+                    />
+                    {/* 文件名 */}
+                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {item.file.name}
+                    </span>
+                    {/* 文件大小 */}
+                    <span style={{ width: 70, color: '#999', fontSize: 12 }}>
+                      {(item.file.size / 1024).toFixed(0)} KB
+                    </span>
+                    {/* 状态 */}
+                    {item.status === 'uploading' && (
+                      <Progress size="small" style={{ width: 100 }} percent={item.progress} />
+                    )}
+                    {item.status === 'done' && <Tag color="green">已上传</Tag>}
+                    {item.status === 'error' && <Tag color="red" title={item.errorMsg}>失败</Tag>}
+                    {item.status === 'pending' && (
+                      <Button
+                        size="small"
+                        danger
+                        onClick={() => setFileItems(prev => prev.filter(f => f.uid !== item.uid))}
+                      >
+                        移除
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </Form>
       </Modal>
     </div>

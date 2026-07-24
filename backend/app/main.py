@@ -10,13 +10,14 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
 from app.config import settings
 from app.core.log import setup_logging
 from app.core.response import ApiResponse, BizError
 from app.database.session import engine, Base
-from app.routers import cases, agents, human_gate
+from app.routers import cases, agents, human_gate, documents
 
 
 @asynccontextmanager
@@ -74,10 +75,16 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
+# ---- 静态文件服务（上传的影像材料） ----
+import os
+os.makedirs(settings.upload_dir, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=settings.upload_dir), name="uploads")
+
 # ---- 路由 ----
 app.include_router(cases.router, prefix=f"{settings.api_prefix}/cases", tags=["cases"])
 app.include_router(agents.router, prefix=f"{settings.api_prefix}/cases", tags=["agents"])
 app.include_router(human_gate.router, prefix=f"{settings.api_prefix}/cases", tags=["human_gate"])
+app.include_router(documents.router, prefix=f"{settings.api_prefix}/cases", tags=["documents"])
 
 
 @app.get(f"{settings.api_prefix}/health")

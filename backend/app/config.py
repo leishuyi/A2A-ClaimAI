@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     log_rotation: str = "500 MB"
     log_retention: str = "14 days"
 
+    # ---- 文件存储 ----
+    upload_dir: str = "data/uploads"         # 文件存储根目录
+    max_file_size: int = 10 * 1024 * 1024    # 单文件上限 10MB
+    allowed_extensions: str = ".jpg,.jpeg,.png,.bmp,.tiff,.pdf"
+
     # ---- API ----
     api_prefix: str = "/api/v1"
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]

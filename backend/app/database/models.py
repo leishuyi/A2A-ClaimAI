@@ -64,6 +64,7 @@ class Case(Base):
 
     traces = relationship("AgentTrace", back_populates="case", order_by="AgentTrace.id")
     reviews = relationship("AuditLog", back_populates="case", order_by="AuditLog.created_at")
+    documents = relationship("Document", back_populates="case", cascade="all, delete-orphan", order_by="Document.created_at")
 
 
 class AgentTrace(Base):
@@ -83,6 +84,30 @@ class AgentTrace(Base):
     completed_at = Column(DateTime, nullable=True)
 
     case = relationship("Case", back_populates="traces")
+
+
+class DocumentType(str, enum.Enum):
+    ID_CARD = "id_card"
+    DIAGNOSIS = "diagnosis"
+    INVOICE = "invoice"
+    MEDICAL_RECORD = "medical_record"
+    OTHER = "other"
+
+
+class Document(Base):
+    """影像材料 — 关联案件的文件记录"""
+    __tablename__ = "documents"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    case_id = Column(Integer, ForeignKey("cases.id"), nullable=False, index=True)
+    doc_type = Column(SAEnum(DocumentType), nullable=False)
+    file_name = Column(String(255), nullable=False)
+    file_path = Column(String(500), nullable=False)
+    file_size = Column(Integer, nullable=False, default=0)
+    mime_type = Column(String(100), nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+
+    case = relationship("Case", back_populates="documents")
 
 
 class AuditLog(Base):

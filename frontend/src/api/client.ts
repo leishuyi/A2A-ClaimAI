@@ -1,4 +1,4 @@
-import type { Case, CaseCreate, AgentTrace, ReviewRequest, ReviewResponse } from '../types';
+import type { Case, CaseCreate, AgentTrace, ReviewRequest, ReviewResponse, Document } from '../types';
 
 const BASE = '/api/v1';
 
@@ -32,6 +32,40 @@ export interface PageResult<T> {
   items: T[];
 }
 
+/** 上传文件到案件（使用 FormData，非 JSON） */
+async function uploadFile<T>(caseId: number, file: File, docType: string, onProgress?: (pct: number) => void): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${BASE}/${caseId}/documents`);
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && onProgress) {
+        onProgress(Math.round((e.loaded / e.total) * 100));
+      }
+    };
+
+    xhr.onload = () => {
+      try {
+        const body = JSON.parse(xhr.responseText);
+        if (body && body.code !== 0) {
+          reject(new Error(body.message || '上传失败'));
+        } else {
+          resolve(body as T);
+        }
+      } catch {
+        reject(new Error('解析响应失败'));
+      }
+    };
+
+    xhr.onerror = () => reject(new Error('网络错误'));
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('doc_type', docType);
+    xhr.send(formData);
+  });
+}
+
 export const api = {
   // Cases
   getCases: (params?: { page?: number; page_size?: number; status?: string }) => {
@@ -59,4 +93,11 @@ export const api = {
     method: 'POST',
     body: JSON.stringify(data),
   }),
+
+  // Documents
+  getDocuments: (caseId: number) => request<Document[]>(`/${caseId}/documents`),
+  uploadDocument: (caseId: number, file: File, docType: string, onProgress?: (pct: number) => void) =>
+    uploadFile<{ data: Document }>(caseId, file, docType, onProgress),
+  deleteDocument: (caseId: number, docId: number) =>
+    request<void>(`/${caseId}/documents/${docId}`, { method: 'DELETE' }),
 };
