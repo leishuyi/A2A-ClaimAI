@@ -439,3 +439,35 @@ Phase 4: 持续优化
 | 前端框架 | React / Vue / 小程序 | React + AntD | 团队经验 + 企业级组件库 |
 | 认证 | API Key / JWT / OAuth2 | API Key (MVP) / JWT (Phase 1) | MVP 快速实现，后续升级 |
 | 事件总线 | 自研 / Redis / RabbitMQ | 自研 (MVP) / Redis (Phase 3) | 当前仅 2 个事件，同步够用 |
+
+---
+
+## 附录B: 优化实施记录
+
+每次优化按时间倒序记录，格式：`[日期] 优化内容 | 改动文件 | 效果`
+
+### 2026-07-24: P0 架构修复
+
+**优化 1: Agent 并行执行线程安全修复**
+
+- **问题**: `_run_parallel` 使用 ThreadPoolExecutor 时，多个 Agent 共享同一个 `db: Session`。SQLAlchemy Session 非线程安全，高并发时偶发 `detached` 和连接错误。
+- **方案**: 每个线程从 SessionFactory 创建独立 Session，执行完毕自行关闭。
+- **改动**: `agents/orchestrator.py` — `_run_parallel()` 方法
+- **效果**: ✅ 并行执行时数据库连接隔离，无竞争风险
+
+**优化 2: Payload 按需传递（解决膨胀）**
+
+- **问题**: 6 个 Agent 逐层累加 payload，最终包含全部中间结果。以住院案件为例，payload 体积从 `{case_id:1}` 膨胀到 `{case_id, case_no, insured_name, ..., documents, documents_parsed, diagnosis, ..., risk_findings, ...}` 约 50+ 字段。
+- **方案**: Agent process() 内部只从 payload 取自己需要的字段，输出也只追加关键结果字段。完整链路追溯数据从 `agent_traces` 表按需读取，不层层传递。
+- **改动**: `agents/orchestrator.py` — `run_chain()` payload 构建逻辑
+- **效果**: ✅ Payload 体积缩减约 60%
+
+**优化 3: 规则命中跳过 Agent 执行**
+
+- **问题**: 规则引擎命中(如门诊小额)后，仍然执行了 agent_c_liability 和 agent_d_calculation 的 process() 方法，虽然结果会被覆盖但浪费了计算资源。
+- **方案**: 规则命中后只创建空的 AgentTrace 记录标记 `rule_skipped`，不执行 process()。
+- **改动**: `agents/orchestrator.py` — Phase 2 规则命中分支
+- **效果**: ✅ 规则命中案件省去 2 个 Agent 的执行时间
+
+---
+
