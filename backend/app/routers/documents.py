@@ -20,6 +20,7 @@ from app.database.session import get_db
 from app.database.models import Case, Document, DocumentType
 from app.schemas.case import DocumentResponse
 from app.services.file_storage import get_storage_backend
+from app.services.image_forensics import analyze_image, has_tampering_risk
 
 router = APIRouter()
 
@@ -87,6 +88,15 @@ async def upload_document(
     if len(content) > settings.max_file_size:
         raise BizError(code=ErrCode.VALIDATION, message=f"文件大小超过限制 ({settings.max_file_size // 1024 // 1024}MB)")
     _verify_magic_bytes(content, ext)
+
+    # 图片篡改检测（仅对图片文件）
+    if ext in (".jpg", ".jpeg", ".png", ".bmp", ".tiff"):
+        forensics_findings = analyze_image(content, file.filename or "")
+        is_risky, risk_level, risk_detail = has_tampering_risk(forensics_findings)
+        for f in forensics_findings:
+            fraud_flags.append(f"图片{f['rule']}: [{f['risk']}] {f['detail'][:60]}")
+        if is_risky:
+            logger.warning("图片篡改检测告警", filename=file.filename, risk=risk_level, detail=risk_detail)
 
     # 发票号全局查重
     fraud_flags: list[str] = []
