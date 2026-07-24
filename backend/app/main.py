@@ -17,7 +17,7 @@ from app.config import settings
 from app.core.log import setup_logging
 from app.core.response import ApiResponse, BizError
 from app.database.session import engine, Base
-from app.routers import cases, agents, human_gate, documents
+from app.routers import cases, agents, human_gate, documents, evaluation
 
 
 @asynccontextmanager
@@ -85,6 +85,7 @@ app.include_router(cases.router, prefix=f"{settings.api_prefix}/cases", tags=["c
 app.include_router(agents.router, prefix=f"{settings.api_prefix}/cases", tags=["agents"])
 app.include_router(human_gate.router, prefix=f"{settings.api_prefix}/cases", tags=["human_gate"])
 app.include_router(documents.router, prefix=f"{settings.api_prefix}/cases", tags=["documents"])
+app.include_router(evaluation.router, prefix=settings.api_prefix, tags=["evaluation"])
 
 
 @app.get(f"{settings.api_prefix}/health")

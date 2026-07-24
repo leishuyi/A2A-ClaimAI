@@ -109,4 +109,13 @@ export const api = {
     uploadFile<{ data: { document: Document; fraud_flags: string[] } }>(caseId, file, docType, extraFields, onProgress),
   deleteDocument: (caseId: number, docId: number) =>
     request<void>(`/${caseId}/documents/${docId}`, { method: 'DELETE' }),
+
+  // Intent Classification
+  classifyIntent: (text: string) =>
+    request<{ data: { intent: string; intent_label: string; confidence: number; extracted_entities: Record<string, string[]> } }>(
+      `/intent/classify?text=${encodeURIComponent(text)}`),
+
+  // Evaluation
+  getIntentEvaluation: () => request<{ data: any }>(`/evaluation/intent`),
+  runIntentEvaluation: () => request<{ data: any }>(`/evaluation/intent/run`, { method: 'POST' }),
 };

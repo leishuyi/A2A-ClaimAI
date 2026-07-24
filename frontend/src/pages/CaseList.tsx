@@ -4,7 +4,7 @@ import {
   Table, Button, Modal, Form, Input, DatePicker, Select,
   InputNumber, Space, Tag, message, Upload, Progress,
 } from 'antd'
-import { PlusOutlined, PlayCircleOutlined, EyeOutlined, InboxOutlined } from '@ant-design/icons'
+import { PlusOutlined, PlayCircleOutlined, EyeOutlined, InboxOutlined, BulbOutlined, RobotOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { api } from '../api/client'
 import RiskBadge from '../components/RiskBadge'
@@ -42,6 +42,7 @@ export default function CaseList() {
   const [modalOpen, setModalOpen] = useState(false)
   const [form] = Form.useForm()
   const [submitting, setSubmitting] = useState(false)
+  const [intentText, setIntentText] = useState("")
   const [fileItems, setFileItems] = useState<FileItem[]>([])
   const navigate = useNavigate()
 
@@ -240,6 +241,43 @@ export default function CaseList() {
         width={640}
       >
         <Form form={form} layout="vertical">
+          {/* 智能填写 */}
+          <div style={{ marginBottom: 16, padding: 12, background: '#f0f5ff', borderRadius: 6 }}>
+            <div style={{ marginBottom: 8, fontWeight: 500, fontSize: 13 }}>
+              <BulbOutlined style={{ color: '#1677ff', marginRight: 6 }} />智能填写（输入自然语言自动识别）
+            </div>
+            <Input.TextArea
+              rows={2}
+              placeholder="例如：张三住院花了12500要报销"
+              value={intentText}
+              onChange={e => setIntentText(e.target.value)}
+            />
+            <Button
+              size="small" type="primary" ghost
+              icon={<BulbOutlined />}
+              style={{ marginTop: 6 }}
+              disabled={!intentText.trim()}
+              onClick={async () => {
+                try {
+                  const res = await api.classifyIntent(intentText)
+                  const data = res.data
+                  const entities = data.extracted_entities || {}
+                  // 自动填充表单
+                  const values: any = {}
+                  if (entities.name) values.insured_name = entities.name[0]
+                  if (entities.name_candidate) values.insured_name = entities.name_candidate[0]
+                  if (entities.amount) values.total_amount = parseFloat(entities.amount[0]) || undefined
+                  form.setFieldsValue(values)
+                  message.info(`识别为: ${data.intent_label}（置信度 ${Math.round(data.confidence * 100)}%）`)
+                } catch (e: any) {
+                  message.error(e.message || '识别失败')
+                }
+              }}
+            >
+              识别并填充
+            </Button>
+          </div>
+
           <Form.Item name="insured_name" label="出险人姓名" rules={[{ required: true }]}>
             <Input placeholder="请输入出险人姓名" />
           </Form.Item>
