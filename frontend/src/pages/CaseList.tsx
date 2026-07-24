@@ -3,14 +3,14 @@ import { useNavigate } from 'react-router-dom'
 import {
   Table, Button, Modal, Form, Input, DatePicker, Select,
   InputNumber, Space, Tag, message, Upload, Progress, Statistic,
-  Card, Row, Col, Tabs, Steps, Result, Typography, Divider, List,
+  Card, Row, Col, Tabs, Steps, Result, Typography, Divider, List, Checkbox,
   Descriptions,
 } from 'antd'
 import {
   PlusOutlined, PlayCircleOutlined, EyeOutlined, InboxOutlined,
   BulbOutlined, FileTextOutlined, DollarOutlined, CheckCircleOutlined,
   SafetyCertificateOutlined, RightOutlined, FileDoneOutlined,
-  UserOutlined, MedicineBoxOutlined, WalletOutlined,
+  UserOutlined, MedicineBoxOutlined, WalletOutlined, WarningOutlined,
 } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { api } from '../api/client'
@@ -39,6 +39,35 @@ const MOCK_POLICIES = [
   { id: 'POL2024004', product: '重疾险', insured: '张三', holder: '张三', start: '2024-01-01', end: '2024-12-31', amount: 500000, premium: 4500 },
 ]
 
+// ── 各险种所需资料清单 ──
+const DOC_REQUIREMENTS: Record<string, { key: DocType; label: string; required: boolean; hint: string }[]> = {
+  '住院医疗险A': [
+    { key: 'id_card', label: '身份证', required: true, hint: '投保人及被保人身份证正反面' },
+    { key: 'diagnosis', label: '诊断证明', required: true, hint: '加盖医院公章的诊断证明' },
+    { key: 'invoice', label: '费用发票', required: true, hint: '医院出具的医疗费用原始发票' },
+    { key: 'medical_record', label: '住院病历', required: true, hint: '完整住院病历含出院小结' },
+    { key: 'other', label: '费用清单', required: false, hint: '住院期间费用明细清单' },
+  ],
+  '住院医疗险B': [
+    { key: 'id_card', label: '身份证', required: true, hint: '投保人及被保人身份证正反面' },
+    { key: 'diagnosis', label: '诊断证明', required: true, hint: '加盖医院公章的诊断证明' },
+    { key: 'invoice', label: '费用发票', required: true, hint: '医院出具的医疗费用原始发票' },
+    { key: 'medical_record', label: '住院病历', required: true, hint: '完整住院病历含出院小结' },
+  ],
+  '意外医疗险': [
+    { key: 'id_card', label: '身份证', required: true, hint: '投保人身份证正反面' },
+    { key: 'diagnosis', label: '诊断证明', required: true, hint: '门诊/急诊病历及诊断证明' },
+    { key: 'invoice', label: '费用发票', required: true, hint: '医疗费用原始发票' },
+    { key: 'other', label: '意外事故证明', required: true, hint: '如交通事故认定书、公安证明等' },
+  ],
+  '重疾险': [
+    { key: 'id_card', label: '身份证', required: true, hint: '被保人身份证正反面' },
+    { key: 'diagnosis', label: '诊断证明', required: true, hint: '加盖医院公章的诊断证明书' },
+    { key: 'medical_record', label: '住院病历', required: true, hint: '完整住院病历含病理报告' },
+    { key: 'other', label: '病理报告', required: true, hint: '组织病理学检查报告' },
+  ],
+}
+
 const MOCK_CLAIMANT_INFO = {
   name: '张三',
   id_card: '110101199001011234',
@@ -66,7 +95,8 @@ export default function CaseList() {
   const [statusFilter, setStatusFilter] = useState('')
   const [step, setStep] = useState(0)               // 报案向导步骤
   const [selectedPolicy, setSelectedPolicy] = useState<string | null>(null)
-  const [submitResult, setSubmitResult] = useState<any>(null) // 提交结果
+  const [submitResult, setSubmitResult] = useState<any>(null)
+  const [agreed, setAgreed] = useState(false) // 提交结果
   const navigate = useNavigate()
 
   const load = async (p = 1) => {
@@ -149,17 +179,42 @@ export default function CaseList() {
     setIntentText('')
   }
 
-  const handleFileDrop = (file: File) => {
+
+
+  const selectedPolicyData = MOCK_POLICIES.find(p => p.id === selectedPolicy)
+  const currentRequirements = DOC_REQUIREMENTS[selectedPolicyData?.product || ''] || []
+
+  // ── 图片质量前端校验 ──
+  const checkImageQuality = (file: File): Promise<string | null> => {
+    return new Promise((resolve) => {
+      if (!file.type.startsWith('image/')) { resolve(null); return }
+      const img = new Image()
+      const url = URL.createObjectURL(file)
+      img.onload = () => {
+        URL.revokeObjectURL(url)
+        if (img.width < 300 || img.height < 200) {
+          resolve('图片分辨率过低，请上传清晰原图（建议至少 800×600）')
+        } else if (file.size < 20000) {
+          resolve('图片文件过小，请上传清晰原图')
+        } else {
+          resolve(null)
+        }
+      }
+      img.onerror = () => resolve(null)
+      img.src = url
+    })
+  }
+
+  const handleFileDrop = async (file: File) => {
     const ext = file.name.split('.').pop()?.toLowerCase()
-    if (!ext || !['jpg', 'jpeg', 'png', 'bmp', 'tiff', 'pdf'].includes(ext)) { message.error(`不支持 .${ext}`); return false }
-    if (file.size > 10 * 1024 * 1024) { message.error('文件不能超过 10MB'); return false }
+    if (!ext || !['jpg', 'jpeg', 'png', 'bmp', 'tiff', 'pdf'].includes(ext)) { message.error('不支持的文件格式，请上传 JPG/PNG/BMP/PDF'); return false }
+    if (file.size > 10 * 1024 * 1024) { message.error('文件大小不能超过 10MB'); return false }
+    // 图片质量检查
+    const qualityIssue = await checkImageQuality(file)
+    if (qualityIssue) { message.warning(qualityIssue); return false }
     setFileItems(prev => [...prev, { uid: `${Date.now()}_${Math.random().toString(36).slice(2)}`, file, docType: 'other', status: 'pending', progress: 0 }])
     return false
   }
-
-  const selectedPolicyData = MOCK_POLICIES.find(p => p.id === selectedPolicy)
-
-  // ── 渲染步骤内容 ──
   const renderStepContent = () => {
     switch (step) {
       case 0: return (
@@ -266,34 +321,47 @@ export default function CaseList() {
       case 2: return (
         <div>
           <Title level={5}><InboxOutlined style={{ marginRight: 8 }} />上传影像资料</Title>
-          <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
-            请上传以下材料（支持 JPG/PNG/BMP/PDF，单文件 ≤10MB）
+          <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
+            {selectedPolicyData?.product} 需上传以下材料（<Text type="danger">*</Text>为必传）
           </Text>
 
-          <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
-            {[{ key: 'id_card', label: '身份证' }, { key: 'diagnosis', label: '诊断证明' },
-              { key: 'invoice', label: '费用发票' }, { key: 'medical_record', label: '住院病历' },
-            ].map(dt => (
-              <Col span={6} key={dt.key}>
-                <div style={{
-                  padding: '12px 8px', textAlign: 'center', borderRadius: 6, cursor: 'pointer',
-                  border: fileItems.some(f => f.docType === dt.key) ? '2px solid #52c41a' : '1px dashed #d9d9d9',
-                  background: fileItems.some(f => f.docType === dt.key) ? '#f6ffed' : '#fafafa',
-                  transition: 'all 0.2s',
-                }}>
-                  <FileTextOutlined style={{ fontSize: 20, color: fileItems.some(f => f.docType === dt.key) ? '#52c41a' : '#999' }} />
-                  <div style={{ fontSize: 13, marginTop: 4 }}>{dt.label}</div>
-                  {fileItems.some(f => f.docType === dt.key) && <Tag color="green" style={{ marginTop: 4 }}>已上传</Tag>}
-                </div>
-              </Col>
-            ))}
+          <Row gutter={[12, 12]} style={{ marginBottom: 12 }}>
+            {currentRequirements.map(dt => {
+              const uploaded = fileItems.some(f => f.docType === dt.key)
+              return (
+                <Col span={8} key={dt.key}>
+                  <div style={{
+                    padding: '10px 8px', textAlign: 'center', borderRadius: 6, height: '100%',
+                    border: uploaded ? '2px solid #52c41a' : '1px dashed #d9d9d9',
+                    background: uploaded ? '#f6ffed' : '#fafafa',
+                    transition: 'all 0.2s',
+                  }}>
+                    <FileTextOutlined style={{ fontSize: 22, color: uploaded ? '#52c41a' : '#999' }} />
+                    <div style={{ fontSize: 13, fontWeight: 500, marginTop: 4 }}>
+                      {dt.label} {dt.required && <Text type="danger">*</Text>}
+                    </div>
+                    <div style={{ fontSize: 11, color: '#999', marginTop: 2 }}>{dt.hint}</div>
+                    <Tag color={uploaded ? 'green' : 'default'} style={{ marginTop: 4, fontSize: 10 }}>
+                      {uploaded ? '已上传' : dt.required ? '必传' : '可选'}
+                    </Tag>
+                  </div>
+                </Col>
+              )
+            })}
           </Row>
+
+          <div style={{ padding: '8px 12px', background: '#fff7e6', borderRadius: 6, marginBottom: 12, border: '1px solid #ffd591' }}>
+            <WarningOutlined style={{ color: '#faad14', marginRight: 6 }} />
+            <Text style={{ fontSize: 12, color: '#666' }}>
+              请确保照片清晰、完整、无反光、无遮挡、无折叠。模糊不清可能导致审核退回。
+            </Text>
+          </div>
 
           <Dragger multiple showUploadList={false} beforeUpload={handleFileDrop}
             accept=".jpg,.jpeg,.png,.bmp,.tiff,.pdf">
             <p className="ant-upload-drag-icon"><InboxOutlined /></p>
             <p className="ant-upload-text">点击或拖拽文件到此处上传</p>
-            <p className="ant-upload-hint">可一次选择多份文件</p>
+            <p className="ant-upload-hint">系统将自动校验图片清晰度和完整性</p>
           </Dragger>
 
           {fileItems.map(item => (
@@ -344,11 +412,27 @@ export default function CaseList() {
             <Descriptions.Item label="医疗费用" span={2}>
               ¥{form.getFieldValue('total_amount')?.toLocaleString() || '待定'}
             </Descriptions.Item>
-            <Descriptions.Item label="上传文件" span={2}>{fileItems.length} 份</Descriptions.Item>
+            <Descriptions.Item label="上传文件" span={2}>
+              <Space wrap>{fileItems.length} 份
+                {currentRequirements.filter(r => r.required).map(r => {
+                  const has = fileItems.some(f => f.docType === r.key)
+                  return <Tag key={r.key} color={has ? 'green' : 'error'} style={{ marginLeft: 2 }}>{r.label}</Tag>
+                })}
+              </Space>
+            </Descriptions.Item>
             <Descriptions.Item label="出险描述" span={2}>{form.getFieldValue('incident_desc')}</Descriptions.Item>
           </Descriptions>
           <Divider />
-          <Text type="secondary">提交后系统将自动进行材料识别和责任判断，预计 1-3 分钟完成初审。</Text>
+          <div style={{ background: '#fff7e6', padding: '12px 16px', borderRadius: 6, marginBottom: 12, border: '1px solid #ffd591' }}>
+            <Checkbox checked={agreed} onChange={e => setAgreed(e.target.checked)}>
+              <Text style={{ fontSize: 13 }}>
+                我已确认以上信息真实有效，承诺所提供的资料真实、完整，如有虚假愿承担相应法律责任。
+              </Text>
+            </Checkbox>
+          </div>
+          <Text type="secondary" style={{ fontSize: 13 }}>
+            提交后 AI 将自动识别材料，预计 1-3 分钟完成初审。
+          </Text>
         </div>
       )
 
@@ -479,6 +563,7 @@ export default function CaseList() {
               </Button>
             ) : (
               <Button type="primary" size="large" loading={submitting} onClick={handleSubmit}
+                disabled={!agreed}
                 icon={<CheckCircleOutlined />}>
                 确认提交报案
               </Button>

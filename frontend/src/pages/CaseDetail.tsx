@@ -11,6 +11,7 @@ import {
 } from '@ant-design/icons'
 import { api } from '../api/client'
 import RiskBadge from '../components/RiskBadge'
+import ClaimProgress from '../components/ClaimProgress'
 import AgentTraceView from '../components/AgentTrace'
 import type { Case, AgentTrace, Document, DocType } from '../types'
 import { DocTypeLabels } from '../types'
@@ -94,6 +95,9 @@ export default function CaseDetail() {
 
   const overviewTab = (
     <div>
+      {/* Claim Progress */}
+      <ClaimProgress status={caseData.status} />
+
       {/* Case Summary Card */}
       <Card size="small" style={{ marginBottom: 16 }}>
         <Descriptions column={{ xs: 1, sm: 2, md: 3 }} bordered size="small">
