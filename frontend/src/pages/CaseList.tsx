@@ -17,6 +17,7 @@ import { api } from '../api/client'
 import RiskBadge from '../components/RiskBadge'
 import type { Case, DocType } from '../types'
 import { DocTypeLabels } from '../types'
+import { validateIdCard, validateBankCard, checkImageQuality } from '../utils/validation'
 
 const { Text, Title } = Typography
 const { Dragger } = Upload
@@ -124,6 +125,13 @@ export default function CaseList() {
   const handleSubmit = async () => {
     const values = await form.validateFields()
     const policy = MOCK_POLICIES.find(p => p.id === selectedPolicy)
+    // 检查必传资料是否完整
+    const missing = currentRequirements.filter(r => r.required && !fileItems.some(f => f.docType === r.key))
+    if (missing.length > 0) {
+      message.warning(`请上传所有必传资料: ${missing.map(m => m.label).join('、')}`)
+      setStep(2)
+      return
+    }
     setSubmitting(true)
     try {
       const newCase = await api.createCase({
@@ -185,24 +193,9 @@ export default function CaseList() {
   const currentRequirements = DOC_REQUIREMENTS[selectedPolicyData?.product || ''] || []
 
   // ── 图片质量前端校验 ──
-  const checkImageQuality = (file: File): Promise<string | null> => {
-    return new Promise((resolve) => {
-      if (!file.type.startsWith('image/')) { resolve(null); return }
-      const img = new Image()
-      const url = URL.createObjectURL(file)
-      img.onload = () => {
-        URL.revokeObjectURL(url)
-        if (img.width < 300 || img.height < 200) {
-          resolve('图片分辨率过低，请上传清晰原图（建议至少 800×600）')
-        } else if (file.size < 20000) {
-          resolve('图片文件过小，请上传清晰原图')
-        } else {
-          resolve(null)
-        }
-      }
-      img.onerror = () => resolve(null)
-      img.src = url
-    })
+  const checkImageQualityFn = async (file: File): Promise<string | null> => {
+    const result = await checkImageQuality(file)
+    return result.warnings.length > 0 ? result.warnings[0] : null
   }
 
   const handleFileDrop = async (file: File) => {
@@ -210,7 +203,7 @@ export default function CaseList() {
     if (!ext || !['jpg', 'jpeg', 'png', 'bmp', 'tiff', 'pdf'].includes(ext)) { message.error('不支持的文件格式，请上传 JPG/PNG/BMP/PDF'); return false }
     if (file.size > 10 * 1024 * 1024) { message.error('文件大小不能超过 10MB'); return false }
     // 图片质量检查
-    const qualityIssue = await checkImageQuality(file)
+    const qualityIssue = await checkImageQualityFn(file)
     if (qualityIssue) { message.warning(qualityIssue); return false }
     setFileItems(prev => [...prev, { uid: `${Date.now()}_${Math.random().toString(36).slice(2)}`, file, docType: 'other', status: 'pending', progress: 0 }])
     return false
@@ -314,6 +307,32 @@ export default function CaseList() {
                 </Form.Item>
               </Col>
             </Row>
+            <Divider />
+            <Text strong style={{ fontSize: 13 }}>收款信息（用于赔款支付）</Text>
+            <Row gutter={16} style={{ marginTop: 8 }}>
+              <Col span={12}>
+                <Form.Item name="id_card" label="身份证号" rules={[{
+                  validator: (_: any, v: string) => {
+                    if (!v) return Promise.resolve()
+                    const r = validateIdCard(v)
+                    return r.valid ? Promise.resolve() : Promise.reject(new Error(r.message))
+                  }
+                }]}>
+                  <Input placeholder="出险人身份证号" maxLength={18} />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="bank_card" label="银行卡号" rules={[{
+                  validator: (_: any, v: string) => {
+                    if (!v) return Promise.resolve()
+                    const r = validateBankCard(v)
+                    return r.valid ? Promise.resolve() : Promise.reject(new Error(r.message))
+                  }
+                }]}>
+                  <Input placeholder="领款人银行借记卡号" maxLength={19} />
+                </Form.Item>
+              </Col>
+            </Row>
           </Form>
         </div>
       )
@@ -413,12 +432,27 @@ export default function CaseList() {
               ¥{form.getFieldValue('total_amount')?.toLocaleString() || '待定'}
             </Descriptions.Item>
             <Descriptions.Item label="上传文件" span={2}>
-              <Space wrap>{fileItems.length} 份
-                {currentRequirements.filter(r => r.required).map(r => {
-                  const has = fileItems.some(f => f.docType === r.key)
-                  return <Tag key={r.key} color={has ? 'green' : 'error'} style={{ marginLeft: 2 }}>{r.label}</Tag>
-                })}
-              </Space>
+              {(() => {
+                const missing = currentRequirements.filter(r => r.required && !fileItems.some(f => f.docType === r.key))
+                return (
+                  <Space wrap direction="vertical" style={{ gap: 2 }}>
+                    <span>{fileItems.length} 份
+                    {currentRequirements.filter(r => r.required).map(r => {
+                      const has = fileItems.some(f => f.docType === r.key)
+                      return <Tag key={r.key} color={has ? 'green' : 'error'} style={{ marginLeft: 2 }}>{r.label}</Tag>
+                    })}
+                    </span>
+                    {missing.length > 0 && (
+                      <Text type="danger" style={{ fontSize: 12 }}>
+                        缺少必传资料: {missing.map(m => m.label).join('、')}
+                      </Text>
+                    )}
+                    {missing.length === 0 && fileItems.length > 0 && (
+                      <Text type="success" style={{ fontSize: 12 }}>所有必传资料已齐全 ✓</Text>
+                    )}
+                  </Space>
+                )
+              })()}
             </Descriptions.Item>
             <Descriptions.Item label="出险描述" span={2}>{form.getFieldValue('incident_desc')}</Descriptions.Item>
           </Descriptions>
