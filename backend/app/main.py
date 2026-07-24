@@ -18,7 +18,7 @@ from app.core.log import setup_logging
 from app.core.auth import AuthMiddleware
 from app.core.response import ApiResponse, BizError
 from app.database.session import engine, Base
-from app.routers import cases, agents, human_gate, documents, evaluation
+from app.routers import cases, agents, human_gate, documents, evaluation, auth, progress
 
 
 @asynccontextmanager
@@ -93,6 +93,8 @@ app.include_router(agents.router, prefix=f"{settings.api_prefix}/cases", tags=["
 app.include_router(human_gate.router, prefix=f"{settings.api_prefix}/cases", tags=["human_gate"])
 app.include_router(documents.router, prefix=f"{settings.api_prefix}/cases", tags=["documents"])
 app.include_router(evaluation.router, prefix=settings.api_prefix, tags=["evaluation"])
+app.include_router(auth.router, prefix=settings.api_prefix, tags=["auth"])
+app.include_router(progress.router, prefix=settings.api_prefix, tags=["progress"])
 
 
 @app.get(f"{settings.api_prefix}/health")

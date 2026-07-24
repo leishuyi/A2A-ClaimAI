@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import {
   Card, Descriptions, Button, Space, Tag, Spin, Divider,
   Input, InputNumber, Radio, Form, message, Table, Typography,
-  Row, Col, Alert,
+  Row, Col, Alert, Modal,
 } from 'antd'
 import {
   ArrowLeftOutlined, CheckCircleOutlined, CloseCircleOutlined,
@@ -49,6 +49,8 @@ export default function HumanGate() {
   const [comment, setComment] = useState('')
   const [modifiedAmount, setModifiedAmount] = useState<number | undefined>()
   const [operator, setOperator] = useState('')
+  const [confirmVisible, setConfirmVisible] = useState(false)
+  const [countdown, setCountdown] = useState(3)
 
   useEffect(() => {
     if (!id) return
@@ -62,9 +64,24 @@ export default function HumanGate() {
     }).finally(() => setLoading(false))
   }, [id])
 
-  const handleSubmit = async () => {
+  useEffect(() => {
+    if (!confirmVisible) { setCountdown(3); return }
+    if (countdown <= 0) return
+    const timer = setTimeout(() => setCountdown(c => c - 1), 1000)
+    return () => clearTimeout(timer)
+  }, [confirmVisible, countdown])
+
+  const handleConfirm = () => {
     if (!operator.trim()) { message.error('请输入操作人姓名'); return }
     if (action === 'modify' && modifiedAmount == null) { message.error('修改后通过需填写理算金额'); return }
+    if (action === 'reject') {
+      setConfirmVisible(true)  // 驳回操作需要确认弹窗
+    } else {
+      doSubmit()
+    }
+  }
+
+  const doSubmit = async () => {
     setSubmitting(true)
     try {
       await api.submitReview(Number(id), {
@@ -309,7 +326,7 @@ export default function HumanGate() {
             <Button onClick={() => navigate(`/cases/${id}`)}>取消</Button>
             <Button type="primary" size="large"
               icon={action === 'reject' ? <CloseCircleOutlined /> : <CheckCircleOutlined />}
-              loading={submitting} onClick={handleSubmit}
+              loading={submitting} onClick={handleConfirm}
               danger={action === 'reject'}>
               {action === 'approve' ? '确认通过' : action === 'reject' ? '确认驳回' : '确认修改后通过'}
             </Button>

@@ -11,3 +11,4 @@ loguru>=0.7.2
 # PostgreSQL driver (install in Docker/production only)
 psycopg2-binary>=2.9.9; sys_platform != 'win32'
 Pillow>=10.0.0
+python-jose[cryptography]>=3.3.0
