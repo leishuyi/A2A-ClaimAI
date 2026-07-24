@@ -73,21 +73,34 @@ class AgentOrchestrator:
         if error:
             return self._fail(case, db, error)
 
-        # ── Phase 2: 规则引擎前置过滤 ──
-        # 在进入 LLM 前先用规则引擎判断
-        rule_ctx = {
-            "total_amount": payload.get("total_amount") or payload.get("medical_total", 0),
-            "diagnosis": payload.get("diagnosis", ""),
-            "insurance_product": payload.get("insurance_product", ""),
-            "name_mismatch": False,
-        }
-        rule_result = get_rule_engine().evaluate(rule_ctx)
+        # ── Phase 2: 规则引擎前置过滤 + 防骗保 ──
+        from app.services.rule_engine import RuleContext
+        from datetime import datetime as _dt
+
+        docs_meta = payload.get("documents", [])
+        now = _dt.utcnow()
+        ctx = RuleContext(
+            total_amount=payload.get("total_amount") or payload.get("medical_total", 0) or 0,
+            diagnosis=payload.get("diagnosis", ""),
+            insurance_product=payload.get("insurance_product", ""),
+            name_mismatch=False,
+            has_uploaded_docs=len(docs_meta) > 0,
+            doc_types=[d.get("doc_type", d.get("type", "")) for d in docs_meta],
+            created_hour=now.hour,
+            created_weekday=now.weekday(),
+            is_round_amount=(payload.get("total_amount", 0) or 0) % 100 == 0,
+            claimant_history_count=0,
+            claimant_history_total=0,
+        )
+        rule_result = get_rule_engine().evaluate(ctx)
 
         if rule_result and not rule_result.needs_llm:
             # 规则引擎直接判决，不调用 LLM Agent
             logger.info("规则引擎命中", rule=rule_result.rule_name,
-                        confidence=rule_result.confidence)
+                        confidence=rule_result.confidence, sampled=rule_result.sampled)
             payload["liability"] = rule_result.liability
+            payload["fraud_flags"] = rule_result.fraud_flags
+            payload["sampled"] = rule_result.sampled
             payload["calculated_amount"] = rule_result.calculated_amount
             payload["rule_engine_hit"] = True
             payload["rule_name"] = rule_result.rule_name
