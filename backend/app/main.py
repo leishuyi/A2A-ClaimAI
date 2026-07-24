@@ -6,7 +6,7 @@ from app.routers import cases, agents, human_gate
 
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="StarShield - A2A 智能理赔助手", version="1.0.0")
+app = FastAPI(title="A2A 智能理赔助手 API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -23,4 +23,4 @@ app.include_router(human_gate.router, prefix="/api/cases", tags=["human_gate"])
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "service": "StarShield"}
+    return {"status": "ok", "service": "A2A智能理赔助手"}

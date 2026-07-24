@@ -16,7 +16,7 @@ export default function Layout({ children }: { children: ReactNode }) {
       <Header style={{ display: 'flex', alignItems: 'center', padding: '0 24px' }}>
         <div style={{ color: '#fff', fontSize: 18, fontWeight: 600, marginRight: 40, whiteSpace: 'nowrap' }}>
           <SafetyCertificateOutlined style={{ marginRight: 8 }} />
-          星盾 StarShield
+          A2A 智能理赔助手
         </div>
         <Menu
           theme="dark"
